@@ -287,13 +287,24 @@ http {
         listen 8080;
         listen [::]:8080;
 
+        # DJMagic catalog uploads are up to 100 MB. Stream them to the homelab
+        # instead of buffering here, and give slow connections time to finish.
+        client_max_body_size 101m;
+        proxy_request_buffering off;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+
         location / {
             proxy_pass http://[fdaa:6:5dee:a7b:910f:53be:b775:e002]:8080;
 
             proxy_http_version 1.1;
 
             proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
+
+            # Fly Proxy provides the original visitor IP.
+            # Overwrite this header before forwarding it to the homelab.
+            proxy_set_header Fly-Client-IP $http_fly_client_ip;
+
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
             proxy_set_header X-Forwarded-Host $host;
@@ -301,6 +312,8 @@ http {
     }
 }
 ```
+
+nginx's default `client_max_body_size` is 1 MB, which would reject large uploads here before they reach the homelab. Each app's limit still applies behind this one (DJMagic's Dokku nginx allows 101 MB; Track Anything keeps Dokku's 1 MB default).
 
 The critical line for multi-app hosting is:
 
